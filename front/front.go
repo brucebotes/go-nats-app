@@ -40,7 +40,7 @@ func (uc *appControl) OnMount(ctx app.Context) {
 		var ncw WasmNatsConnectionWrapper
 		app.Log("NatsConnect")
 		var err error
-		uc.nc, err = nats.Connect("localhost:8502", // our websocket port
+		uc.nc, err = nats.Connect("twighorse.com:3000", // our websocket port
 			nats.Name("PWA-"+uc.whoami),
 			nats.SetCustomDialer(ncw),
 		)

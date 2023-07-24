@@ -4,15 +4,9 @@ import (
 	"bytes"
 	"compress/flate"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/maxence-charriere/go-app/v9/pkg/app"
-	"github.com/nats-io/nats-server/v2/server"
-	"github.com/nats-io/nats.go"
-	"github.com/o1egl/govatar"
-	"golang.org/x/net/netutil"
 	"image"
 	"image/jpeg"
 	"log"
@@ -22,6 +16,14 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/maxence-charriere/go-app/v9/pkg/app"
+	"github.com/nats-io/nats-server/v2/server"
+	"github.com/nats-io/nats.go"
+	"github.com/o1egl/govatar"
+	"golang.org/x/net/netutil"
 )
 
 // AppServer implements the Backend service
@@ -39,6 +41,18 @@ type Muxer interface {
 
 func Create(ah *app.Handler) {
 	var srv AppServer
+	cert, err := tls.LoadX509KeyPair(
+		"twighorse.com/combined_certificate.pem",
+		"twighorse.com/certificate-key.pem",
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	tlsConfig := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		ServerName:         "twighorse.com",
+		InsecureSkipVerify: true,
+	}
 
 	opts := &server.Options{
 		ServerName:     "Your friendly backend",
@@ -53,10 +67,21 @@ func Create(ah *app.Handler) {
 			},
 		},
 		Websocket: server.WebsocketOpts{
-			Host:             "127.0.0.1",
-			Port:             8502,
-			NoTLS:            true,
-			SameOrigin:       false,
+			Host:       "127.0.0.1",
+			Port:       3000,
+			NoTLS:      false,
+			TLSConfig:  tlsConfig,
+			SameOrigin: true,
+			AllowedOrigins: []string{
+				"wss://twighorse.com",
+				"wss://twighorse.com:3000",
+				"wss://www.twighorse.com",
+				"wss://www.twighorse.com:3000",
+				"https://twighorse.com",
+				"https://twighorse.com:3000",
+				"https://www.twighorse.com",
+				"https://www.twighorse.com:3000",
+			},
 			Compression:      false,
 			HandshakeTimeout: 5 * time.Second,
 		},
@@ -116,7 +141,7 @@ func Create(ah *app.Handler) {
 		if err != nil {
 			log.Printf("Respond error: %s", err)
 		}
-		//noErr(err)
+		// noErr(err)
 	})
 	if err != nil {
 		panic(err)
@@ -132,18 +157,19 @@ func Create(ah *app.Handler) {
 	r.Use(compressor.Handler)
 	r.Use(middleware.Recoverer)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:8500")
+	listener, err := net.Listen("tcp", ":443")
 	if err != nil {
 		panic(err)
 	}
 
 	mainServer := &http.Server{
-		Addr: listener.Addr().String(),
+		Addr:      listener.Addr().String(),
+		TLSConfig: tlsConfig,
 	}
 
 	// try to build the final browser location
-	var hostURL = url.URL{
-		Scheme: "http",
+	hostURL := url.URL{
+		Scheme: "https",
 		Host:   mainServer.Addr,
 	}
 
@@ -163,7 +189,7 @@ func Create(ah *app.Handler) {
 		listener = netutil.LimitListener(listener, 100)
 		defer func() { _ = listener.Close() }()
 
-		err := mainServer.Serve(listener)
+		err := mainServer.ServeTLS(listener, "", "")
 		if err != nil {
 			if err == http.ErrServerClosed {
 				fmt.Println("AppServer was stopped!")
@@ -174,7 +200,7 @@ func Create(ah *app.Handler) {
 		// when run by "mage watch/run" it will break mage
 		// before actually exiting the server, which just looks
 		// strange but is okay after all
-		//time.Sleep(2 * time.Second) // just for testing
+		// time.Sleep(2 * time.Second) // just for testing
 		close(shutdown)
 	}()
 

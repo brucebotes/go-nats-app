@@ -18,8 +18,8 @@ func (cw WasmNatsConnectionWrapper) Dial(network, address string) (net.Conn, err
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	app.Logf("Dialing Address: ws://%s", address)
-	c, _, err := websocket.Dial(ctx, "ws://"+address, nil)
+	app.Logf("Dialing Address: wss://%s", address)
+	c, _, err := websocket.Dial(ctx, "wss://"+address, nil)
 	if err != nil {
 		app.Logf("websocket.Dial failed %#v", err)
 		return nil, fmt.Errorf("websocket.Dial failed %w", err)
